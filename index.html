@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Infrastructure Financial Risk Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.27.1/plotly.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0D0F14;
+      --panel:     #141720;
+      --card:      #1C2030;
+      --card2:     #161924;
+      --border:    #252A3A;
+      --text:      #E8EAF0;
+      --dim:       #6B7280;
+      --accent:    #F5C842;
+      --oracle:    #E8472A;
+      --microsoft: #00A4EF;
+      --meta:      #0866FF;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────────── */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding: 22px 32px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .header p {
+      font-size: 11px;
+      color: var(--dim);
+      margin-top: 5px;
+      letter-spacing: 0.4px;
+    }
+    .badges { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .badge {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; padding: 4px 10px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── CONTROLS ───────────────────────────────────────────────── */
+    .controls {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      gap: 28px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .cg { display: flex; flex-direction: column; gap: 7px; min-width: 180px; }
+    .cg label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: var(--accent);
+      text-transform: uppercase;
+    }
+    .cg input[type="range"] {
+      -webkit-appearance: none; width: 100%;
+      height: 3px; background: var(--border);
+      border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .cg input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: var(--accent);
+      cursor: pointer; border: 2px solid var(--bg);
+    }
+    .cg select {
+      background: var(--card2); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px;
+      font-family: 'Courier New', monospace; font-size: 12px;
+      border-radius: 4px; cursor: pointer; outline: none;
+    }
+    .cg select:focus { border-color: var(--accent); }
+    .range-row { display: flex; justify-content: space-between; align-items: center; }
+    .rval { font-size: 14px; font-weight: 700; color: var(--accent); min-width: 50px; text-align: right; }
+
+    .toggles { display: flex; flex-direction: column; gap: 7px; }
+    .toggles label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: var(--accent);
+      text-transform: uppercase;
+    }
+    .toggle-row { display: flex; gap: 8px; }
+    .tbtn {
+      padding: 5px 13px; border-radius: 4px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+      cursor: pointer; border: 1px solid var(--border);
+      background: var(--card2); color: var(--dim);
+      font-family: 'Courier New', monospace;
+      transition: all 0.12s; text-transform: uppercase;
+    }
+    .tbtn.on-oracle     { background: var(--oracle);    border-color: var(--oracle);    color: #fff; }
+    .tbtn.on-microsoft  { background: var(--microsoft); border-color: var(--microsoft); color: #fff; }
+    .tbtn.on-meta       { background: var(--meta);      border-color: var(--meta);      color: #fff; }
+
+    /* ── LOADING OVERLAY ────────────────────────────────────────── */
+    #loading {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999; font-size: 13px; letter-spacing: 2px; color: var(--accent);
+    }
+    #loading.hidden { display: none; }
+
+    /* ── MAIN ───────────────────────────────────────────────────── */
+    .main { padding: 24px 32px; display: flex; flex-direction: column; gap: 24px; }
+
+    .section-label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 2px; color: var(--dim);
+      text-transform: uppercase; margin-bottom: -8px;
+    }
+
+    /* KPI grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 12px;
+    }
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 4px;
+      border-top-width: 2px;
+    }
+    .kpi-label { font-size: 10px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; }
+    .kpi-val   { font-size: 22px; font-weight: 700; }
+    .kpi-name  { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
+
+    /* Table */
+    .tbl-wrap {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; overflow: hidden;
+    }
+    .tbl-head {
+      padding: 13px 20px; border-bottom: 1px solid var(--border);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: var(--dim);
+      text-transform: uppercase;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .tbl-head span { color: var(--accent); font-size: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      padding: 10px 16px; text-align: right;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase;
+      border-bottom: 1px solid var(--border); color: var(--dim);
+    }
+    thead th:first-child { text-align: left; }
+    tbody td {
+      padding: 10px 16px; text-align: right;
+      border-bottom: 1px solid rgba(37,42,58,0.5);
+      color: var(--text); font-size: 12px;
+    }
+    tbody td:first-child { text-align: left; color: var(--dim); font-size: 11px; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:nth-child(even) { background: rgba(20,23,32,0.5); }
+    .c-oracle    { color: var(--oracle)    !important; font-weight: 700; }
+    .c-microsoft { color: var(--microsoft) !important; font-weight: 700; }
+    .c-meta      { color: var(--meta)      !important; font-weight: 700; }
+
+    /* Chart grids */
+    .g2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+    .g3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+    .chart-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 16px;
+    }
+    .chart-title {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.5px; color: var(--dim);
+      text-transform: uppercase; margin-bottom: 10px;
+      display: flex; justify-content: space-between;
+    }
+    .chart-title em { color: var(--accent); font-style: normal; font-size: 9px; }
+    .plot { width: 100%; }
+
+    /* Footer */
+    .footer {
+      text-align: center; padding: 16px 32px 28px;
+      font-size: 10px; color: var(--dim); letter-spacing: 0.5px;
+      border-top: 1px solid var(--border); margin-top: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .g2, .g3 { grid-template-columns: 1fr; }
+      .controls { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">LOADING DASHBOARD...</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div>
+    <h1>AI Infrastructure Financial Risk Dashboard</h1>
+    <p>Double-Declining Balance Depreciation &nbsp;·&nbsp; 3-Year Forward Forecast &nbsp;·&nbsp; USD Millions</p>
+    <div class="badges">
+      <div class="badge"><div class="dot" style="background:var(--oracle)"></div>Oracle</div>
+      <div class="badge"><div class="dot" style="background:var(--microsoft)"></div>Microsoft</div>
+      <div class="badge"><div class="dot" style="background:var(--meta)"></div>Meta</div>
+    </div>
+  </div>
+</header>
+
+<!-- CONTROLS -->
+<div class="controls">
+  <div class="cg">
+    <label>GPU Risk Life</label>
+    <div class="range-row">
+      <input type="range" id="riskLife" min="1" max="7" step="0.5" value="3">
+      <span class="rval" id="riskLifeVal">3.0 yrs</span>
+    </div>
+  </div>
+  <div class="cg">
+    <label>Revenue Growth</label>
+    <div class="range-row">
+      <input type="range" id="growthRate" min="0" max="30" step="1" value="12">
+      <span class="rval" id="growthRateVal">12%</span>
+    </div>
+  </div>
+  <div class="cg">
+    <label>Energy Escalation</label>
+    <div class="range-row">
+      <input type="range" id="energyRate" min="0" max="20" step="1" value="5">
+      <span class="rval" id="energyRateVal">5%</span>
+    </div>
+  </div>
+  <div class="cg">
+    <label>Depreciation Method</label>
+    <select id="deprMethod">
+      <option value="DDB">Double-Declining Balance</option>
+      <option value="SL">Straight-Line</option>
+    </select>
+  </div>
+  <div class="toggles">
+    <label>Companies</label>
+    <div class="toggle-row">
+      <button class="tbtn on-oracle"    id="t-Oracle"    onclick="toggleCo('Oracle')">Oracle</button>
+      <button class="tbtn on-microsoft" id="t-Microsoft" onclick="toggleCo('Microsoft')">Microsoft</button>
+      <button class="tbtn on-meta"      id="t-Meta"      onclick="toggleCo('Meta')">Meta</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- KPI ROW -->
+  <div id="kpiGrid" class="kpi-grid"></div>
+
+  <!-- SUMMARY TABLE -->
+  <div class="section-label">Year 3 Forecast Snapshot</div>
+  <div class="tbl-wrap">
+    <div class="tbl-head">
+      2026 AI Risk Comparison
+      <span id="tblSub">DDB · GPU Risk Life 3.0 yrs · 12% Growth</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th class="c-oracle">Oracle</th>
+            <th class="c-microsoft">Microsoft</th>
+            <th class="c-meta">Meta</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TIME SERIES -->
+  <div class="section-label">3-Year Trend Analysis</div>
+  <div class="g3">
+    <div class="chart-card">
+      <div class="chart-title">Adj. Operating Income <em>$M</em></div>
+      <div id="cAdjInc" class="plot" style="height:210px"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Depreciation Expense <em>$M</em></div>
+      <div id="cDepr" class="plot" style="height:210px"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Total Fleet Value <em>$M</em></div>
+      <div id="cFleet" class="plot" style="height:210px"></div>
+    </div>
+  </div>
+
+  <!-- VALUATION -->
+  <div class="section-label">Valuation &amp; Profitability</div>
+  <div class="g3">
+    <div class="chart-card">
+      <div class="chart-title">Risk-Adjusted P/E <em>Year 3</em></div>
+      <div id="cPE" class="plot" style="height:210px"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Risk-Adjusted ROE <em>Year 3, %</em></div>
+      <div id="cROE" class="plot" style="height:210px"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Operating Margin Trend <em>%</em></div>
+      <div id="cMargin" class="plot" style="height:210px"></div>
+    </div>
+  </div>
+
+  <!-- DEEP DIVE -->
+  <div class="section-label">Deep Dive</div>
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">After-Tax Net Income <em>$M</em></div>
+      <div id="cNI" class="plot" style="height:230px"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">DDB vs Straight-Line Depreciation <em>Year 3</em></div>
+      <div id="cDDBvsSL" class="plot" style="height:230px"></div>
+    </div>
+  </div>
+
+  <!-- CAPEX + RADAR -->
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Annual CapEx Allocation <em>GPU vs Other</em></div>
+      <div id="cCapex" class="plot" style="height:230px"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Multi-Metric Scorecard <em>Year 3, Normalized</em></div>
+      <div id="cRadar" class="plot" style="height:230px"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  Methodology: DDB accelerated depreciation &nbsp;·&nbsp;
+  GPU risk life configurable &nbsp;·&nbsp;
+  Revenue growth configurable &nbsp;·&nbsp;
+  Energy cost escalation configurable &nbsp;·&nbsp;
+  All figures in USD millions
+</footer>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const COLORS = { Oracle: '#E8472A', Microsoft: '#00A4EF', Meta: '#0866FF' };
+const YEAR_LABELS = ['Year 1', 'Year 2', 'Year 3'];
+let activeCompanies = new Set(['Oracle', 'Microsoft', 'Meta']);
+let debounceTimer = null;
+
+// ── Plotly base layout ─────────────────────────────────────────────────────
+const BASE_LAYOUT = {
+  paper_bgcolor: 'transparent',
+  plot_bgcolor:  'transparent',
+  font: { family: "'Courier New', monospace", color: '#6B7280', size: 10 },
+  margin: { l: 54, r: 12, t: 8, b: 36 },
+  showlegend: false,
+  xaxis: { gridcolor: '#252A3A', gridwidth: 0.5, tickcolor: '#252A3A',
+           linecolor: '#252A3A', tickfont: { color: '#6B7280', size: 9 } },
+  yaxis: { gridcolor: '#252A3A', gridwidth: 0.5, tickcolor: '#252A3A',
+           linecolor: '#252A3A', tickfont: { color: '#6B7280', size: 9 }, zeroline: false }
+};
+const CFG = { displayModeBar: false, responsive: true };
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function fmtB(v) {
+  if (Math.abs(v) >= 1000000) return '$' + (v/1000000).toFixed(1) + 'T';
+  if (Math.abs(v) >= 1000)    return '$' + Math.round(v/1000) + 'B';
+  return '$' + Math.round(v) + 'M';
+}
+function fmtShort(v) {
+  if (Math.abs(v) >= 1000000) return (v/1000000).toFixed(1)+'T';
+  if (Math.abs(v) >= 1000)    return (v/1000).toFixed(0)+'B';
+  return v.toFixed(0)+'M';
+}
+function norm(arr) {
+  const mn = Math.min(...arr), mx = Math.max(...arr);
+  return arr.map(v => (mx - mn) < 0.001 ? 0.5 : (v - mn) / (mx - mn));
+}
+function hexRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+function rgba(hex, a) {
+  const [r,g,b] = hexRgb(hex); return `rgba(${r},${g},${b},${a})`;
+}
+function layout(extra = {}) {
+  return Object.assign(JSON.parse(JSON.stringify(BASE_LAYOUT)), extra);
+}
+
+// ── Fetch data from Flask API ──────────────────────────────────────────────
+async function fetchData() {
+  const rl = document.getElementById('riskLife').value;
+  const gr = (parseFloat(document.getElementById('growthRate').value) / 100).toFixed(2);
+  const er = (parseFloat(document.getElementById('energyRate').value) / 100).toFixed(2);
+  const mt = document.getElementById('deprMethod').value;
+  const url = `/api/data?risk_life=${rl}&growth_rate=${gr}&energy_rate=${er}&method=${mt}`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+// ── Render everything ──────────────────────────────────────────────────────
+async function renderAll() {
+  const { data, ddb_year3, sl_year3, configs, companies } = await fetchData();
+
+  const rl = parseFloat(document.getElementById('riskLife').value);
+  const gr = document.getElementById('growthRate').value;
+  const mt = document.getElementById('deprMethod').value;
+
+  document.getElementById('tblSub').textContent =
+    `${mt} · GPU Risk Life ${rl.toFixed(1)} yrs · ${gr}% Growth`;
+
+  const active = companies.filter(c => activeCompanies.has(c));
+  const final  = {};
+  companies.forEach(co => { final[co] = data[co][2]; });
+
+  // ── KPI Cards ────────────────────────────────────────────────────────────
+  if (active.length > 0) {
+    const best = (fn) => active.reduce((a,b) => fn(final[a]) > fn(final[b]) ? a : b);
+    const low  = (fn) => active.reduce((a,b) => fn(final[a]) < fn(final[b]) ? a : b);
+    const kpis = [
+      { label: 'Best Margin (Yr3)',    co: best(r => r.margin),  val: final[best(r=>r.margin)].margin.toFixed(1)+'%'  },
+      { label: 'Highest ROE (Yr3)',    co: best(r => r.roe),     val: final[best(r=>r.roe)].roe.toFixed(1)+'%'        },
+      { label: 'Lowest P/E (Yr3)',     co: low(r => r.pe),       val: final[low(r=>r.pe)].pe.toFixed(1)+'×'           },
+      { label: 'Largest Fleet (Yr3)',  co: best(r => r.fleet),   val: fmtB(final[best(r=>r.fleet)].fleet)             },
+      { label: 'Highest Net Income',   co: best(r => r.ni),      val: fmtB(final[best(r=>r.ni)].ni)                  },
+    ];
+    document.getElementById('kpiGrid').innerHTML = kpis.map(k => `
+      <div class="kpi-card" style="border-top:2px solid ${COLORS[k.co]}">
+        <div class="kpi-label">${k.label}</div>
+        <div class="kpi-val" style="color:${COLORS[k.co]}">${k.val}</div>
+        <div class="kpi-name" style="color:${COLORS[k.co]}">${k.co}</div>
+      </div>`).join('');
+  }
+
+  // ── Summary Table ─────────────────────────────────────────────────────────
+  const metrics = [
+    { label: 'Fleet Value',    key: 'fleet',   fmt: fmtB },
+    { label: 'Depr Expense',   key: 'depr',    fmt: fmtB },
+    { label: 'Adj Op Income',  key: 'adj_inc', fmt: fmtB },
+    { label: 'After-Tax NI',   key: 'ni',      fmt: fmtB },
+    { label: 'Risk P/E',       key: 'pe',      fmt: v => v.toFixed(1)+'×' },
+    { label: 'Risk ROE %',     key: 'roe',     fmt: v => v.toFixed(1)+'%' },
+    { label: 'Margin %',       key: 'margin',  fmt: v => v.toFixed(1)+'%' },
+  ];
+  document.getElementById('tblBody').innerHTML = metrics.map(m =>
+    `<tr><td>${m.label}</td>` +
+    companies.map(co => {
+      const op = activeCompanies.has(co) ? '' : 'opacity:0.3;';
+      return `<td class="c-${co.toLowerCase()}" style="${op}">${m.fmt(final[co][m.key])}</td>`;
+    }).join('') + '</tr>'
+  ).join('');
+
+  // ── Line chart factory ───────────────────────────────────────────────────
+  function lineTraces(key) {
+    return active.map(co => ({
+      x: YEAR_LABELS,
+      y: data[co].map(r => r[key]),
+      name: co, type: 'scatter', mode: 'lines+markers',
+      line: { color: COLORS[co], width: 2.2 },
+      marker: { color: COLORS[co], size: 6 },
+      fill: 'tozeroy', fillcolor: rgba(COLORS[co], 0.07),
+      hovertemplate: '<b>%{x}</b><br>%{y:,.0f}<extra>' + co + '</extra>'
+    }));
+  }
+
+  Plotly.react('cAdjInc', lineTraces('adj_inc'), layout(), CFG);
+  Plotly.react('cDepr',   lineTraces('depr'),    layout(), CFG);
+  Plotly.react('cFleet',  lineTraces('fleet'),   layout(), CFG);
+  Plotly.react('cNI',     lineTraces('ni'),      layout(), CFG);
+  Plotly.react('cMargin', lineTraces('margin'),  layout({
+    yaxis: { ...BASE_LAYOUT.yaxis, ticksuffix: '%' }
+  }), CFG);
+
+  // ── Bar chart factory ────────────────────────────────────────────────────
+  function barTrace(key, suffix = '') {
+    return [{
+      x: active,
+      y: active.map(co => final[co][key]),
+      type: 'bar',
+      marker: { color: active.map(co => COLORS[co]), opacity: 0.88 },
+      text: active.map(co => final[co][key].toFixed(1) + suffix),
+      textposition: 'outside',
+      textfont: { color: active.map(co => COLORS[co]), size: 11, family: "'Courier New',monospace" },
+      hovertemplate: '<b>%{x}</b><br>%{y:.2f}' + suffix + '<extra></extra>'
+    }];
+  }
+
+  Plotly.react('cPE', barTrace('pe', '×'), layout({
+    shapes: [{
+      type:'line', x0:-0.5, x1: active.length-0.5, y0:30, y1:30,
+      line: { color:'#F5C842', width:1.2, dash:'dot' }
+    }],
+    annotations: [{
+      x: active.length > 0 ? active.length - 0.55 : 0.5,
+      y: 30, text: '30× threshold', showarrow: false,
+      font: { color:'#F5C842', size:9 }, xanchor:'right', yanchor:'bottom'
+    }]
+  }), CFG);
+  Plotly.react('cROE', barTrace('roe', '%'), layout(), CFG);
+
+  // ── CapEx stacked bars ───────────────────────────────────────────────────
+  const capexTraces = active.flatMap(co => [
+    {
+      name: co+' GPU', x:[co],
+      y: [configs[co].annual_capex * configs[co].gpu_ratio],
+      type:'bar', marker:{ color:COLORS[co], opacity:0.9 },
+      hovertemplate: `<b>${co} GPU CapEx</b><br>$%{y:,.0f}M<extra></extra>`
+    },
+    {
+      name: co+' Other', x:[co],
+      y: [configs[co].annual_capex * (1-configs[co].gpu_ratio)],
+      type:'bar', marker:{ color: rgba(COLORS[co], 0.32) },
+      hovertemplate: `<b>${co} Other CapEx</b><br>$%{y:,.0f}M<extra></extra>`
+    }
+  ]);
+  Plotly.react('cCapex', capexTraces, layout({ barmode:'stack' }), CFG);
+
+  // ── DDB vs SL ────────────────────────────────────────────────────────────
+  Plotly.react('cDDBvsSL', [
+    {
+      name:'Straight-Line', x:active, y:active.map(co=>sl_year3[co]),
+      type:'bar', marker:{ color:active.map(co=>COLORS[co]), opacity:0.32 },
+      text:active.map(co=>fmtShort(sl_year3[co])), textposition:'outside',
+      textfont:{ color:active.map(co=>COLORS[co]), size:10 },
+      hovertemplate:'<b>%{x}</b><br>SL: $%{y:,.0f}M<extra></extra>'
+    },
+    {
+      name:'DDB (Risk)', x:active, y:active.map(co=>ddb_year3[co]),
+      type:'bar', marker:{ color:active.map(co=>COLORS[co]), opacity:0.9 },
+      text:active.map(co=>fmtShort(ddb_year3[co])), textposition:'outside',
+      textfont:{ color:active.map(co=>COLORS[co]), size:10 },
+      hovertemplate:'<b>%{x}</b><br>DDB: $%{y:,.0f}M<extra></extra>'
+    }
+  ], layout({ barmode:'group' }), CFG);
+
+  // ── Radar ────────────────────────────────────────────────────────────────
+  if (active.length > 0) {
+    const nM = norm(active.map(co => final[co].margin));
+    const nR = norm(active.map(co => final[co].roe));
+    const nF = norm(active.map(co => final[co].fleet));
+    const nP = norm(active.map(co => 1 / Math.max(final[co].pe, 0.1)));
+    const nC = norm(active.map(co => final[co].adj_inc / configs[co].annual_capex));
+
+    const radarTraces = active.map((co, i) => ({
+      type:'scatterpolar',
+      r: [nM[i],nR[i],nF[i],nP[i],nC[i],nM[i]],
+      theta: ['Margin','ROE','Fleet','Low P/E','CapEx Eff','Margin'],
+      fill:'toself', fillcolor: rgba(COLORS[co], 0.09),
+      line:{ color:COLORS[co], width:2 }, name:co,
+      hovertemplate:'<b>'+co+'</b><br>%{theta}: %{r:.2f}<extra></extra>'
+    }));
+
+    Plotly.react('cRadar', radarTraces, {
+      paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+      font:{ family:"'Courier New',monospace", color:'#6B7280', size:9 },
+      polar:{
+        bgcolor:'transparent',
+        radialaxis:{ visible:true, range:[0,1], gridcolor:'#252A3A',
+                     tickfont:{color:'#252A3A',size:7}, linecolor:'#252A3A' },
+        angularaxis:{ gridcolor:'#252A3A', linecolor:'#252A3A',
+                      tickfont:{color:'#6B7280',size:9} }
+      },
+      showlegend:true,
+      legend:{ font:{color:'#E8EAF0',size:9}, bgcolor:'rgba(28,32,48,0.7)',
+               bordercolor:'#252A3A', borderwidth:1 },
+      margin:{ l:40, r:40, t:20, b:20 }
+    }, CFG);
+  }
+
+  document.getElementById('loading').classList.add('hidden');
+}
+
+// ── Company toggle ─────────────────────────────────────────────────────────
+function toggleCo(co) {
+  if (activeCompanies.has(co)) {
+    if (activeCompanies.size > 1) activeCompanies.delete(co);
+  } else {
+    activeCompanies.add(co);
+  }
+  ['Oracle','Microsoft','Meta'].forEach(c => {
+    const btn = document.getElementById('t-' + c);
+    btn.className = activeCompanies.has(c)
+      ? `tbtn on-${c.toLowerCase()}`
+      : 'tbtn';
+  });
+  debouncedRender();
+}
+
+// ── Debounced render (prevents rapid API calls on slider drag) ─────────────
+function debouncedRender() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(renderAll, 120);
+}
+
+// ── Slider listeners ───────────────────────────────────────────────────────
+document.getElementById('riskLife').addEventListener('input', function() {
+  document.getElementById('riskLifeVal').textContent = parseFloat(this.value).toFixed(1)+' yrs';
+  debouncedRender();
+});
+document.getElementById('growthRate').addEventListener('input', function() {
+  document.getElementById('growthRateVal').textContent = this.value+'%';
+  debouncedRender();
+});
+document.getElementById('energyRate').addEventListener('input', function() {
+  document.getElementById('energyRateVal').textContent = this.value+'%';
+  debouncedRender();
+});
+document.getElementById('deprMethod').addEventListener('change', debouncedRender);
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+renderAll();
+</script>
+</body>
+</html>
